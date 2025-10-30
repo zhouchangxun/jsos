@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Shell Test</title>
+    <script type="module">
+        import { sh } from './src/bin/sh.js';
+        
+        // 测试函数定义和调用
+        const testCode = "function hi(){ echo hello,$1}; hi bob;";
+        
+        console.log("测试代码:", testCode);
+        console.log("解析AST...");
+        
+        // 捕获输出
+        const originalConsoleLog = console.log;
+        const outputs = [];
+        console.log = (...args) => {
+            outputs.push(args.join(' '));
+            originalConsoleLog(...args);
+        };
+        
+        try {
+            // 执行解析和运行
+            const tokens = sh.tokenize(testCode);
+            console.log("Tokens:", tokens);
+            
+            const ast = sh.parse(tokens);
+            console.log("AST:", JSON.stringify(ast, null, 2));
+            
+            console.log("执行代码...");
+            sh.evaluate(testCode, { 
+                echo: (args) => console.log(args.join(' ')),
+                variables: {} 
+            });
+            
+            document.getElementById('result').textContent = 
+                "测试成功!\n\n" +
+                "Tokens: " + JSON.stringify(tokens, null, 2) + "\n\n" +
+                "AST: " + JSON.stringify(ast, null, 2) + "\n\n" +
+                "输出: " + outputs.join('\n');
+        } catch (error) {
+            console.error("错误:", error);
+            document.getElementById('result').textContent = "测试失败:\n" + error.message;
+        } finally {
+            console.log = originalConsoleLog;
+        }
+    </script>
+</head>
+<body>
+    <h1>Shell 函数解析测试</h1>
+    <pre id="result">测试中...</pre>
+</body>
+</html>
