@@ -1,5 +1,8 @@
 /**
  * Shell解释器模块 - 可在jsos终端中通过sh命令启动，同时支持Node.js环境
+ * 依赖：
+ * 1. Node.js环境下需要fs模块进行文件操作
+ * 2. 浏览器环境下需要os.terminal对象进行输出和os.fs模块进行文件操作
  */
 
 // 检测运行环境
@@ -62,6 +65,115 @@ class Shell {
     _createCommands() {
         const commands = {
             sh: async (args) => await sh(args),
+            help: async (args) => {
+                return this._help(args);
+            },
+            true: async (args) => 0,
+            false: async (args) => 1,
+            test: (args) => {
+                // 模拟实现test命令的主要功能
+                let result = false;
+                
+                try {
+                    if (args.length === 0) {
+                        // test without arguments returns false
+                        result = false;
+                    } else if (args.length === 1) {
+                        // test with one argument returns true if not empty
+                        result = args[0] !== '';
+                    } else if (args.length === 3) {
+                        // 检查是否是二元比较（如 =, !=）
+                        const operator = args[1];
+                        const left = args[0];
+                        const right = args[2];
+                        
+                        switch (operator) {
+                            case '=':
+                            case '==':
+                            case '-eq':
+                                result = left == right;  // do not use ===, we will type compare
+                                break;
+                            case '!=':
+                            case '-ne':
+                                result = left != right;  // do not use !==, we will type compare
+                                break;
+                            case '<':
+                            case '-lt':
+                                result = left < right;
+                                break;
+                            case '>':
+                            case '-gt':
+                                result = left > right;
+                                break;
+                            case '<=':
+                            case '-le':
+                                result = left <= right;
+                                break;
+                            case '>=':
+                            case '-ge':
+                                result = left >= right;
+                                break;
+                        }
+                    } else {
+                        // 处理选项
+                        const option = args[0];
+                        
+                        switch (option) {
+                            case '-f':
+                                // 检查文件是否存在
+                                console.log(`[debug] Testing if file exists: ${args[1]}`);
+                                if (typeof os !== 'undefined' && os.fs) {
+                                    let fileInfo = os.fs.stat(args[1]);
+                                    result = fileInfo != null && fileInfo.type == 'file';
+                                } else if (isNode && fs) {
+                                    result = fs.existsSync(args[1]);
+                                    console.log(`[debug] Node existsSync result: ${result}`);
+                                }
+                                break;
+                            case '-d':
+                                // 检查目录是否存在
+                                if (typeof os !== 'undefined' && os.fs) {
+                                    let fileInfo = os.fs.stat(args[1]);
+                                    result = fileInfo != null && fileInfo.type == 'directory';
+                                } else if (isNode && fs) {
+                                    try {
+                                        result = fs.statSync(args[1]).isDirectory();
+                                    } catch (e) {
+                                        result = false;
+                                    }
+                                }
+                                break;
+                            case '-e':
+                                // 检查文件或目录是否存在
+                                if (typeof os !== 'undefined' && os.fs) {
+                                    result = os.fs.exists(args[1]);
+                                } else if (isNode && fs) {
+                                    result = fs.existsSync(args[1]);
+                                }
+                                break;
+                            case '-z':
+                                // 检查字符串是否为空
+                                console.log(`[debug] Testing if string is empty: "${args[1]}"`);
+                                result = args[1] === '';
+                                break;
+                            case '-n':
+                                // 检查字符串是否非空
+                                console.log(`[debug] Testing if string is non-empty: "${args[1]}"`);
+                                result = args[1] !== '';
+                                break;
+                            default:
+                                result = false;
+                        }
+                    }
+                } catch (e) {
+                    console.log(`[debug] Error in test command:`, e);
+                    result = false;
+                }
+                
+                // 根据用户要求：成功时返回空字符串，失败时返回非空字符串
+                console.log(`[debug] test result: ${result}`);
+                return result ? '' : 'false';
+            },
             echo: (args) => {
                 console.log('[debug] echo args:', args);
                 this.terminal.writeln(args.join(' '));
@@ -186,7 +298,7 @@ class Shell {
             { regex: /^([\w\-\.\/]+)=(.*?)(?=\s|;|$)/, type: 'assignment', extract: [1, 2] },
             { regex: /^[\w\-\.\/]+/, type: 'identifier' },
             { regex: /^\d+/, type: 'number' },
-            { regex: /^[<>]=?|==|!=/, type: 'operator' }
+            { regex: /^(==|!=|[<>]=?)/, type: 'operator' }
         ];
         
         // 优先识别的关键字列表
@@ -328,8 +440,38 @@ class Shell {
         
         parseIf() {
             this.consume();
-            const test = this.parseExpression();
             
+            // 只支持命令作为条件
+            let test;
+            
+            // 检查是否是 [ ] 语法
+            if (this.peek()?.value === '[') {
+                console.log('[debug] Parsing [] condition syntax');
+                this.consume(); // 消耗 [
+                
+                // 收集 [ 和 ] 之间的所有参数
+                const args = [];
+                while (this.peek() && this.peek().value !== ']') {
+                    const arg = this.consume();
+                    // 忽略分号
+                    if (arg.type !== 'semicolon') {
+                        args.push(arg.value);
+                    }
+                }
+                
+                if (!this.peek() || this.peek().value !== ']') {
+                    throw new Error('Expected "]" to close condition');
+                }
+                this.consume(); // 消耗 ]
+                
+                // 将 [ args ] 转换为 test args 命令
+                test = { type: 'Command', name: 'test', args: args };
+            } else {
+                // 解析普通命令
+                test = this.parseCommand();
+            }
+            
+            // 处理分号（可选）
             if (this.peek()?.type === 'semicolon') {
                 this.consume();
             }
@@ -346,7 +488,9 @@ class Shell {
                 throw new Error('Expected "fi" to close if statement');
             }
             this.consume();
-            return { type: 'IfStatement', test, consequent, alternate };
+            
+            // 现在所有条件都是命令
+            return { type: 'IfStatement', test, consequent, alternate, isCommand: true };
         }
         
         parseFor() {
@@ -431,9 +575,39 @@ class Shell {
         
         parseWhile() {
             this.consume();
-            const test = this.parseExpression();
             
-            while (!this.eof() && this.peek()?.type === 'semicolon') {
+            // 只支持命令作为条件，与if语法保持一致
+            let test;
+            
+            // 检查是否是 [ ] 语法
+            if (this.peek()?.value === '[') {
+                console.log('[debug] Parsing [] condition syntax in while');
+                this.consume(); // 消耗 [
+                
+                // 收集 [ 和 ] 之间的所有参数
+                const args = [];
+                while (this.peek() && this.peek().value !== ']') {
+                    const arg = this.consume();
+                    // 忽略分号
+                    if (arg.type !== 'semicolon') {
+                        args.push(arg.value);
+                    }
+                }
+                
+                if (!this.peek() || this.peek().value !== ']') {
+                    throw new Error('Expected "]" to close condition');
+                }
+                this.consume(); // 消耗 ]
+                
+                // 将 [ args ] 转换为 test args 命令
+                test = { type: 'Command', name: 'test', args: args };
+            } else {
+                // 解析普通命令
+                test = this.parseCommand();
+            }
+            
+            // 处理分号（可选）
+            if (this.peek()?.type === 'semicolon') {
                 this.consume();
             }
             
@@ -444,7 +618,7 @@ class Shell {
             this.consume();
             const body = this.parseBlockUntil('done');
             this.consume();
-            return { type: 'WhileStatement', test, body };
+            return { type: 'WhileStatement', test, body, isCommand: true };
         }
         
         parseCase() {
@@ -607,11 +781,17 @@ class Shell {
         }
         // 异步执行AST,嵌套调用时必须指定await保证shell脚本顺序执行
         async execute(ast) {
-            console.log('[exec] Run:', ast);
             if (ast.type === 'Program') {
-                return await Promise.all(ast.body.map(stmt => this.execute(stmt))).then(results => results.filter(Boolean).join('\n'));
+                const results = [];
+                for (const stmt of ast.body) {
+                    const result = await this.execute(stmt);
+                    if (result && result !== '\n') {
+                        results.push(result);
+                    }
+                }
+                return results.join('\n');
             }
-            
+            console.log('[exec] Run:', ast);
             // 处理函数定义
             if (ast.type === 'FunctionDefinition') {
                 this.state.functions[ast.name] = ast.body;
@@ -670,7 +850,7 @@ class Shell {
                 case 'WhileStatement': return this.executeWhile(ast);
                 case 'CaseStatement': return this.executeCase(ast);
                 case 'Command': 
-                    // 检查是否是函数调用
+                    // 检查是否是函数调用(命令和函数调用的形式完全一样，根据是否在functions中定义来判断)
                     if (this.state.functions[ast.name]) {
                         console.log(`[exec] Function call: ${ast.name} with args:`, ast.args);
                         return await this.execute({ type: 'FunctionCall', name: ast.name, args: ast.args });
@@ -708,18 +888,46 @@ class Shell {
             }
         }
         
-        executeIf(ast) {
-            // console.log('[debug] executeIf ast:', ast);
-            const condition = this.evaluate(ast.test);
+        async executeIf(ast) {
+            console.log(`[debug] executeIf with command condition: ${ast.test.name}`, ast.test.args);
+            let condition = false;
+            
+            // 只处理命令作为条件
+            if (ast.test.type === 'Command') {
+                try {
+                    // 执行命令并获取返回码
+                    const retcode = await this.executeCommand(ast.test);
+                    
+                    // 根据用户要求：返回码为空表示true，非空表示false
+                    condition = retcode === '' || retcode === undefined || retcode === null || retcode === 0;
+                    console.log(`[debug] Command returned: ${retcode}, condition: ${condition}`);
+                } catch (e) {
+                    console.error(`[debug] Error executing command as condition:`, e);
+                    condition = false;
+                }
+            }
+            
+            console.log(`[debug] If condition result:`, condition);
+            
             if (condition) {
-                return this.execute({ type: 'Program', body: ast.consequent });
+                return await this.execute({ type: 'Program', body: ast.consequent });
             } else if (ast.alternate) {
-                return this.execute({ type: 'Program', body: ast.alternate });
+                return await this.execute({ type: 'Program', body: ast.alternate });
             }
             return '';
         }
         
-        executeFor(ast) {
+        // 执行test命令并返回布尔值结果
+        async executeTestCommand(args) {
+            console.log('[debug] executeTestCommand args:', args);
+            
+            // 模拟实现test命令的主要功能
+            // 现在不需要这个方法了，因为我们直接使用内置的test命令
+            // 但保留它以保持兼容性
+            return false;
+        }
+        
+        async executeFor(ast) {
             const results = [];
             let iterationCount = 0;
             const maxIterations = 100;
@@ -740,7 +948,7 @@ class Shell {
                 this.state.variables[cleanVarName] = value;
                 
                 try {
-                    const result = this.execute({ type: 'Program', body: ast.body });
+                    const result = await this.execute({ type: 'Program', body: ast.body });
                     if (result && result !== '\n') {
                         results.push(result);
                     }
@@ -752,13 +960,46 @@ class Shell {
             return results.filter(Boolean).join('\n');
         }
         
-        executeWhile(ast) {
+        async executeWhile(ast) {
             const output = [];
             let count = 0;
-            while (this.evaluate(ast.test) && count < 100) {
-                output.push(this.execute({ type: 'Program', body: ast.body }));
+            
+            while (count < 100) {
+                let condition = false;
+                
+                // 只处理命令作为条件，与if语法保持一致
+                if (ast.test.type === 'Command') {
+                    try {
+                        // 执行命令并获取返回码
+                        const retcode = await this.executeCommand(ast.test);
+                        
+                        // 根据用户要求：返回码为空、undefined、null或0表示true，非空且非0表示false
+                        condition = retcode === '' || retcode === undefined || retcode === null || retcode === 0;
+                        console.log(`[debug] Command returned: ${retcode}, condition: ${condition}`);
+                    } catch (e) {
+                        console.error(`[debug] Error executing command as condition:`, e);
+                        condition = false;
+                    }
+                }
+                
+                console.log(`[debug] While condition result:`, condition);
+                
+                if (!condition) {
+                    break;
+                }
+                
+                try {
+                    const result = await this.execute({ type: 'Program', body: ast.body });
+                    if (result && result !== '\n') {
+                        output.push(result);
+                    }
+                } catch (e) {
+                    output.push(`Error in loop body: ${e.message}`);
+                }
+                
                 count++;
             }
+            
             return output.filter(Boolean).join('\n');
         }
         
@@ -818,7 +1059,9 @@ class Shell {
                     return arg;
                 });
                 
-                return await this.commands[ast.name](processedArgs);
+                let retcode = await this.commands[ast.name](processedArgs);
+                console.log(`[exec] Command ${ast.name} retcode: ${retcode}`);
+                return retcode;
             } catch (e) {
                 return `error: ${e.message}`;
             }
@@ -1026,13 +1269,14 @@ class Shell {
         return lastResult;
     }
     _help() {
-        this.terminal.writeln('简易Shell解释器（支持 if/for/while/case）');
+        this.terminal.writeln('简易Shell解释器（支持 assign / if / for / while / case / function）');
         this.terminal.writeln('输入命令或输入 exit 退出');
         this.terminal.writeln('示例命令：');
-        this.terminal.writeln('  name="shell lang"; echo "hello，$name"');
-        this.terminal.writeln('  a=10; if a == 10; then echo "a is 10"; else echo "no"; fi');
+        this.terminal.writeln('  name="shell language"; echo "hello, $name"');
+        this.terminal.writeln('  a=10; if [ $a -eq 10 ]; then echo "a is 10"; else echo "no"; fi');
         this.terminal.writeln('  for i in 1 2 3; do echo $i; done');
-        this.terminal.writeln('  i=0; while i < 3; do echo $i; i=$((i+1)); done');
+        this.terminal.writeln('  i=0;while [ $i -lt 3 ];do echo $i;i=$((i+1));done');
+        this.terminal.writeln('  function greet(){ echo "hi, $1 !"}; greet "shell-script" ');
     }
     // 启动REPL
     async startREPL() {

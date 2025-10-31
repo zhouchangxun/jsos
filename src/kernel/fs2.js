@@ -102,7 +102,25 @@ class FileSystem {
     this.currentPath = resolved;
     return '';
   }
-
+  /** 显示文件状态（stat） */
+  stat(path) {
+    const resolved = this.resolvePath(path);
+    const node = this.getNode(resolved);
+    if (!node) {
+      console.log(`stat: 无法访问'${path}': 没有那个文件或目录`);
+      return null;
+    }
+    return {
+      name: node.name,
+      type: node.type,
+      size: node.content?.length || 0,
+      path: resolved.join('/')
+    };
+  }
+  // 检查文件是否存在
+  exists(path) {
+    return this.stat(path) !== null;
+  }
   /** 读取文件（read） */
   read(path) {
     const resolved = this.resolvePath(path);

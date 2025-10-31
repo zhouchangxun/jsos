@@ -63,3 +63,28 @@ function inner() {
 }
 
 outer
+
+echo "9. === 测试循环中调用函数==="
+for i in 1 2 3; do
+    echo "循环计数: $i"
+    inner
+done
+
+echo "10. === 测试循环中调用函数和条件判断==="
+for i in 1 2 3; do
+    echo "循环计数: $i"
+    if  "$i" == "2" ; then
+        echo "    等于2"
+        inner
+    else
+        echo "    不等于2"
+    fi
+done
+
+echo "11. === 实现一个简单的算法：计算1到10的和==="
+sum=0
+for i in {1..10}; do
+    echo "当前数字: $i"
+    sum=$((sum + i))
+done
+echo "1到10的和为: $sum"
