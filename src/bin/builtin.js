@@ -161,6 +161,17 @@ function openEditor(fileName, initialContent) {
 }
 // 导出所有命令为异步函数
 export const builtinCommands = {
+  load: async (args) => {
+    try {
+      // 动态导入模块
+      const module = await import('./hello.js');
+      // 执行函数
+      const result = await module.main(['jsos']);
+      console.log('app ret:', result); // 输出：Hello, jsos
+    } catch (error) {
+      console.error('加载失败：', error);
+    }
+  },
   pwd: async (args, context) => {
     context = context || { stdin: '', stdout: '', stderr: '' };
     context.stdout = os.fs.pwd();
@@ -170,7 +181,7 @@ export const builtinCommands = {
     // 如果没有提供context，使用默认值
     context = context || { stdin: '', stdout: '', stderr: '' };
     
-    const path = args[0] || '';
+    const path = args[0] || '.';
     const lsResult = os.fs.ls(path, true);
     
     // 格式化输出，目录和文件区分颜色
@@ -180,7 +191,6 @@ export const builtinCommands = {
       }
       return item.name;
     });
-    
     // 简单列表格式，每个项目一行
     context.stdout = items.join('\t');
   },
@@ -317,7 +327,7 @@ export const builtinCommands = {
             ).join(' ') + '\n';
           },
           warn: (...args) => {
-            context.stdout += '警告: ' + args.map(arg => 
+            context.stdout += args.map(arg => 
               typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg)
             ).join(' ') + '\n';
           }
@@ -348,15 +358,15 @@ export const builtinCommands = {
           JSON.stringify(result, null, 2) : String(result);
       }
     } catch (error) {
-      context.stderr = `JavaScript 错误: ${error.message}`;
+      context.stderr = `JavaScript Error: ${error.message}`;
     }
   },
 
   // 列出进程
-  ps: async (args, context, processManager) => {
+  ps: async (args, context) => {
     context = context || { stdin: '', stdout: '', stderr: '' };
     
-    const processes = processManager.listProcesses();
+    const processes = os.proc.list();
     
     // 格式化进程列表
     let output = 'PID\tStatus\tCommand\n';
@@ -366,7 +376,7 @@ export const builtinCommands = {
   },
 
   // 杀死进程
-  kill: async (args, context, processManager) => {
+  kill: async (args, context) => {
     context = context || { stdin: '', stdout: '', stderr: '' };
     
     if (args.length === 0) {
@@ -380,7 +390,7 @@ export const builtinCommands = {
       return;
     }
     
-    const result = processManager.killProcess(pid);
+    const result = os.proc.kill(pid);
     
     if (!result.success) {
       context.stderr = `错误: ${result.error}`;
@@ -390,11 +400,11 @@ export const builtinCommands = {
   },
 
   // 清空终端
-  clear: async (args, context, terminal) => {
+  clear: async (args, context) => {
     context = context || { stdin: '', stdout: '', stderr: '' };
     
-    if (terminal && typeof terminal.clear === 'function') {
-      terminal.clear();
+    if (os.terminal) {
+      os.terminal.clear();
     } else {
       context.stdout = '\x1B[2J\x1B[H'; // ANSI清屏命令
     }

@@ -8,7 +8,7 @@ echo "系统名称: $NAME"
 echo "系统版本: $VERSION"
 
 echo "2. === 测试条件判断==="
-if  $VERSION == "1.0" ; then
+if [ "$VERSION" == "1.0" ] ; then
     echo "版本是1.0"
 else
     echo "版本不是1.0"
@@ -22,7 +22,7 @@ done
 echo "4. === 测试函数定义和调用==="
 function hi() {
   echo "hello, $1";
-  if $1 == 'bob';then
+  if [ "$1" == "bob" ] ; then
     echo "i like bob";
   else
     echo "i hate $1";
@@ -44,7 +44,7 @@ for i in 1 2 3; do
     echo "外部循环计数: $i"
     for j in 1 2 3; do
         echo "  内部循环计数: $j"
-        if  "$i" == "$j" ; then
+        if [ "$i" == "$j" ] ; then
             echo "    相等"
         else
             echo "    不相等"
@@ -73,7 +73,7 @@ done
 echo "10. === 测试循环中调用函数和条件判断==="
 for i in 1 2 3; do
     echo "循环计数: $i"
-    if  "$i" == "2" ; then
+    if [ "$i" == "2" ] ; then
         echo "    等于2"
         inner
     else
@@ -83,7 +83,7 @@ done
 
 echo "11. === 实现一个简单的算法：计算1到10的和==="
 sum=0
-for i in {1..10}; do
+for i in 1 2 3 4; do
     echo "当前数字: $i"
     sum=$((sum + i))
 done

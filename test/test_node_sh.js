@@ -1,5 +1,5 @@
 // 测试脚本：验证sh.js在Node.js环境中的功能
-const { sh } = require('./src/bin/sh.js');
+const { sh } = require('../src/bin/sh.js');
 
 // 测试执行命令
 console.log('测试执行echo命令:');

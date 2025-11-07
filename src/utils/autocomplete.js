@@ -96,7 +96,7 @@ class Autocomplete {
       // 清除从光标到行尾
       terminal.write('\x1b[K');
       // 重新写入提示符和完成的命令
-      terminal.write(terminal.getPrompt() + completedCommand);
+      terminal.prompt(completedCommand);
     } else {
       // 多个匹配项，显示所有选项
       terminal.writeln('');
@@ -123,15 +123,10 @@ class Autocomplete {
       // 由于我们现在使用xterm.js，不再需要直接操作DOM元素
       // 直接显示一个换行和提示符即可，终端会自动处理当前输入
       terminal.write('\n');
-      terminal.write(terminal.getPrompt() + terminal.currentLine);
+      terminal.prompt(terminal.currentLine);
     }
   }
   
-  // 注意：由于使用xterm.js，不再需要直接操作DOM元素来获取命令行
-  // 终端类现在直接管理currentLine状态
-  
-  // 注意：由于使用xterm.js，不再需要手动操作DOM光标
-  // xterm.js自动处理光标位置
 }
 
 // 导出Autocomplete类

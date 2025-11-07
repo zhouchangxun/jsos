@@ -5,10 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>JS OS Terminal</title>
   <!-- 引入xterm.js库 -->
- <script src="./xterm.js"></script>
- <link  href="./xterm.min.css" rel="stylesheet">
+ <script src="./node_modules/xterm/lib/xterm.js"></script>
+ <link  href="./node_modules/xterm/css/xterm.css" rel="stylesheet">
   <!-- 引入xterm-addon-fit -->
-  <!-- <script src="https://cdn.bootcdn.net/ajax/libs/xterm-addon-fit/0.8.0/xterm-addon-fit.js"></script> -->
+  <script src="./node_modules/xterm-addon-fit/lib/xterm-addon-fit.js"></script>
   <!-- 引入Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
   <!-- 引入Font Awesome -->
@@ -74,7 +74,7 @@
           <div class="w-3 h-3 rounded-full bg-green-500"></div>
         </div>
         <div class="ml-4 text-gray-400 text-sm" id="current-path">
-          /home/user
+          /dev/tty1
         </div>
       </div>
       

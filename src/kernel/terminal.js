@@ -21,6 +21,9 @@
 //   terminal.onCtrlC = () => {
 //     console.log('用户按下Ctrl+C');
 //   };
+//   terminal.onPrompt = () => {
+//     return '>';
+//   };
 class OSTerminal {
   constructor(containerId) {
     // 保存容器ID
@@ -33,8 +36,8 @@ class OSTerminal {
     this.commandHistory = [];
     this.historyIndex = -1;
     this.currentLine = '';
-    this.prompt = '[prompt] > ';
-    this.promptLength = this.prompt.length;
+    this.promptContent = '[prompt] > ';
+    this.promptLength = this.prompt.length; // 有颜色时prompt字符串长度!=终端显示长度
     this.tempInputBuffer = '';
     
     // 初始化xterm.js终端
@@ -69,21 +72,36 @@ class OSTerminal {
     
     // 打开终端到容器
     this.xterm.open(this.container);
-    
     // 自动聚焦
     this.xterm.focus();
-    
+    // 初始化自适应插件
+    const fitAddon = new window.FitAddon.FitAddon();
+    this.xterm.loadAddon(fitAddon);
+    fitAddon.fit();
+    window.addEventListener("resize", function resizeScreen() {
+        try { // 窗口大小改变时，触发xterm的resize方法使自适应
+          fitAddon.fit()
+        } catch (e) {
+          console.log("e", e.message)
+        }
+    });
     // 处理终端输入
     this.xterm.onData(this._handleData.bind(this));
     
-    // 处理行事件
-    this.xterm.onLineFeed(() => {
-      ;// 可以在这里处理换行事件
-    });
     this.xterm.writeln('[info] standard i/o device ready...')
-    this.xterm.write(this.getPrompt());
   }
-  
+  prompt(content = ''){
+    this.xterm.write(this.promptContent + content);
+  }
+  // 读取一行输入（通过异步模拟阻塞）
+  async readline(prompt = ''){
+    this.write(prompt);
+    return new Promise((resolve, reject) => {
+      this.onCommand = (command) => {
+        resolve(command);
+      };
+    });
+  }
   // 处理终端数据输入
   _handleData(data) {
     // 如果正在处理命令，阻止除Ctrl+C外的所有输入
@@ -149,8 +167,8 @@ class OSTerminal {
     // 重置当前行
     this.currentLine = '';
     
-    // 显示提示符
-    this.xterm.write(this.getPrompt());
+    // 显示提示符，改为由REPL程序自己决定何时输出
+    // this.prompt();
   }
   
   // 处理向上箭头
@@ -168,7 +186,7 @@ class OSTerminal {
     // 显示历史命令
     this.currentLine = this.commandHistory[this.historyIndex];
     this._clearCurrentLine();
-    this.xterm.write(this.getPrompt() + this.currentLine);
+    this.prompt(this.currentLine);
   }
   
   // 处理向下箭头
@@ -188,7 +206,7 @@ class OSTerminal {
     
     // 显示当前输入
     this._clearCurrentLine();
-    this.xterm.write(this.getPrompt() + this.currentLine);
+    this.prompt(this.currentLine);
   }
   
   // 处理Tab键（自动补全）
@@ -224,8 +242,11 @@ class OSTerminal {
   }
   
   // 获取当前提示符
-  getPrompt() {
-    return this.prompt;
+  onPrompt() {
+    return {
+      prompt: this.promptContent,
+      len: this.promptLength
+    };
   }
   
   // 写入文本到终端当前位置
@@ -246,7 +267,7 @@ class OSTerminal {
   
   // 设置提示符
   setPrompt(prompt, len) {
-    this.prompt = prompt;
+    this.promptContent = prompt;
     this.promptLength = len || prompt.length;
   }
   

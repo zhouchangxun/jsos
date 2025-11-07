@@ -6,10 +6,10 @@ import { Autocomplete } from '../utils/autocomplete.js';
 // import { sh } from '../bin/sh.js';
 
 class CommandProcessor {
-  constructor(terminal, fs, processManager) {
-    this.terminal = terminal;
-    this.fs = fs;
-    this.processManager = processManager;
+  constructor(os) {
+    this.terminal = os.terminal;
+    this.fs = os.fs;
+    this.proc = os.proc;
 
     this.commands = {};
     this.foregroundProcess = null; // 跟踪前台运行的进程
@@ -18,21 +18,30 @@ class CommandProcessor {
     this.autocomplete = new Autocomplete(this.fs, this);
     // 绑定事件处理函数
     this._bindEvents();
-    this._initWelcome();
   }
-  // 初始化欢迎信息
-  _initWelcome() {
-    // 清除终端并显示欢迎信息
-    this.terminal.clear();
-    this.terminal.writeln('');
-    this.terminal.writeln('Welcome to JS OS Terminal (类Unix环境)');
-    this.terminal.writeln('');
+  // REPL loop
+  async run() {
+    this.terminal.writeln('\nWelcome to JS OS Terminal (类Unix环境)\n');
     this.terminal.writeln('输入 "help" 查看可用命令');
-    this.terminal.writeln('当前处于basic REPL模式(基本命令执行与回显)。输入 "sh" 切换到标准Shell模式。');
+    this.terminal.writeln('当前处于basic REPL模式。\n(输入 "sh" 切换到标准Shell模式。)');
+    this.terminal.focus();      // 确保终端保持聚焦
     this.prompt();
-    this.terminal.write(this.terminal.getPrompt());
-    // 确保终端保持聚焦
-    this.terminal.focus();
+    
+    while (true) {
+      // Read: 等待用户输入
+      const input = await this.terminal.readline();
+
+      // Execute: 执行用户输入
+      let ret = await this.execute(input);
+
+      // Print: 打印执行结果（如果有）
+      if (ret) {
+        this.terminal.writeln('ret:' + ret);
+      }
+
+      // Loop again
+      this.prompt();
+    }
   }
   // 初始化命令
   _initCommands() {
@@ -40,99 +49,34 @@ class CommandProcessor {
     const commandNames = Object.keys(builtinCommands);
 
     for (const name of commandNames) {
-      this.commands[name] = this._wrapAsyncCommand(name).bind(this);
+      // this.commands[name] = this._wrapAsyncCommand(name).bind(this);
+      this.commands[name] = builtinCommands[name];
     }
     // extra cmd
-    this.commands['sh'] = async (args, context) => {
-      let stdout = await sh(args, context);
+    this.commands['sh'] = async (args, context={}) => {
+      context.args = args;
+      let stdout = await sh(context);
       this.terminal.writeln(stdout);
     };
   }
   
-  // 包装异步命令为同步调用
-  _wrapAsyncCommand(commandName) {
-    return async (args, context) => {
-      // 创建命令执行上下文
-      const cmdContext = {
-        stdin: context?.stdin || '',
-        stdout: '',
-        stderr: ''
-      };
-      
-      // 根据命令类型提供不同的依赖
-      const command = builtinCommands[commandName];
-      
-      try {
-        // 调用异步命令，根据命令需要传递不同的依赖
-        if (['ls', 'cd', 'mkdir', 'touch', 'rm', 'cat'].includes(commandName)) {
-          await command(args, cmdContext, this.fs);
-        } else if (['ps', 'kill'].includes(commandName)) {
-          await command(args, cmdContext, this.processManager);
-        } else if (['js', 'clear'].includes(commandName)) {
-          await command(args, cmdContext, this.terminal);
-        } else if (commandName === 'edit') {
-          // edit命令需要额外的openEditor函数，这里简化处理
-          await command(args, cmdContext, this.terminal, this.fs);
-        } else {
-          // 其他命令只需要args和context
-          context.stdout = await command(args, cmdContext);
-        }
-        
-        // 将结果写入上下文
-        if (context) {
-          context.stdout = cmdContext.stdout;
-          context.stderr = cmdContext.stderr;
-        }
-        
-        // 输出到终端（如果有stdout或stderr）
-        if (this.terminal && cmdContext.stdout) {
-          if (typeof this.terminal.writeln === 'function') {
-            this.terminal.writeln(cmdContext.stdout);
-          } else if (typeof this.terminal.write === 'function') {
-            this.terminal.write(cmdContext.stdout + '\n');
-          }
-        }
-        
-        if (this.terminal && cmdContext.stderr) {
-          if (typeof this.terminal.writeln === 'function') {
-            this.terminal.writeln(cmdContext.stderr);
-          } else if (typeof this.terminal.write === 'function') {
-            this.terminal.write(cmdContext.stderr + '\n');
-          }
-        }
-      } catch (error) {
-        const errorMsg = `执行命令 ${commandName} 时出错: ${error.message}`;
-        if (context) {
-          context.stderr = errorMsg;
-        }
-        if (this.terminal) {
-          if (typeof this.terminal.writeln === 'function') {
-            this.terminal.writeln(errorMsg);
-          } else if (typeof this.terminal.write === 'function') {
-            this.terminal.write(errorMsg + '\n');
-          }
-        }
-      }
-    };
-  }
-  
-
 // 绑定事件处理函数
   _bindEvents() {
     // 命令处理事件
     this.terminal.onCommand = async (command) => await this._handleCommand(command);
-    
+
     // Tab补全事件
     this.terminal.onTabComplete = (input) => this._handleTabComplete(input);
     
     // Ctrl+C事件
     this.terminal.onCtrlC = () => this._handleCtrlC();
+
+    // this.terminal.onPrompt = () => this.onPrompt();
   }
   
   // 处理命令
   async _handleCommand(command) {
     await this.execute(command);
-    
   }
   
   
@@ -162,12 +106,13 @@ class CommandProcessor {
   }
   
   // 显示提示符
-  prompt() {
+  prompt(content = '') {
     const path = this.fs.pwd();
     const prompt = `${path} $ `;
     // 使用ANSI颜色代码 - xterm.js支持这些代码
     let PS1 = `\x1B[36m${prompt}\x1B[0m`;
-    this.terminal.setPrompt(PS1, prompt.length);
+    this.terminal.setPrompt(PS1);
+    this.terminal.prompt(content);
   }
   
   // 显示变量值
@@ -183,7 +128,7 @@ class CommandProcessor {
     } else {
       this.terminal.writeln(String(value));
     }
-    this.prompt();
+    this.terminal.prompt();
   }
 
   // 解析命令字符串为命令名和参数数组
@@ -237,8 +182,7 @@ class CommandProcessor {
     
     // 检查是否包含管道
     if (command.includes('|')) {
-      this._executePipeline(command);
-      return;
+      return await this._executePipeline(command);
     }
     
     const parts = this._parseCommand(command);
@@ -254,22 +198,26 @@ class CommandProcessor {
     
     if (this.commands[cmdName]) {
       // 执行命令
-      await this.commands[cmdName](args, context);
-      // 输出命令的标准输出到终端
-      // if (context.stdout) {
-      //   this.terminal.writeln(context.stdout);
-      // }
-      // 输出错误信息
+      let ret = await this.commands[cmdName](args, context);
+      
+      // 输出stdout
+      if (context.stdout) {
+        this.terminal.writeln(context.stdout);
+      }
+      
+      // 输出stderr 
       if (context.stderr) {
         this.terminal.writeln(`\x1B[31m${context.stderr}\x1B[0m`);
       }
+
+      return ret;
     } else {
       this.terminal.writeln(`\x1B[31mcmd: 未知命令 '${cmdName}'\x1B[0m`);
     }
   }
   
-  // 执行管道命令
-  _executePipeline(command) {
+  // 执行管道命令，返回最后一个命令的退出状态（简易实现，只支持一把输出并传递到下一个命令）
+  async _executePipeline(command) {
     // 分割管道命令
     const pipeline = command.split('|').map(cmd => cmd.trim());
     
@@ -291,7 +239,7 @@ class CommandProcessor {
       
       if (this.commands[cmdName]) {
         // 执行命令
-        this.commands[cmdName](args, context);
+        let ret = await this.commands[cmdName](args, context);
         
         // 传递输出
         lastOutput = context.stdout;
@@ -299,11 +247,11 @@ class CommandProcessor {
         // 如果有错误，显示并中断管道
         if (context.stderr) {
           this.terminal.writeln(`\x1B[31m${context.stderr}\x1B[0m`);
-          return;
+          return ret;
         }
       } else {
         this.terminal.writeln(`\x1B[31msh: 未知命令 '${cmdName}'\x1B[0m`);
-        return;
+        return 1;
       }
     }
     

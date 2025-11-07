@@ -1,8 +1,10 @@
 // boot.js - 系统启动模块
-import { FileSystem } from './kernel/fs2.js';
-import { ProcessManager } from './kernel/process.js';
+import { FileSystem } from './kernel/vfs.js';
 import { OSTerminal } from './kernel/terminal.js';
+import { ProcessManager } from './kernel/process.js';
 import { CommandProcessor } from './kernel/command.js';
+import Pipe from './kernel/pipe.js';
+
 // 主入口模块
 class JsOS {
   constructor(terminalId) {
@@ -16,27 +18,28 @@ class JsOS {
     
     // 初始化进程管理器
     this.terminal.writeln('[boot] 初始化进程管理器............');
-    this.processManager = new ProcessManager(this.fs, this.terminal);
+    this.proc = new ProcessManager(this.fs, this.terminal);
     
+    // 初始化管道
+    this.terminal.writeln('[boot] mount pipe interface............');
+    this.Pipe = Pipe;
+
     // booted.
     this.terminal.writeln('[boot] os kernel ready..........');
-
-    // stdio交由命令处理器
-    this.terminal.writeln('[boot] 初始化命令处理器............');
-    this.commandProcessor = new CommandProcessor(
-      this.terminal,
-      this.fs,
-      this.processManager
-    );
   }
-
+  boot() {
+    // first process
+    // stdio交由命令处理器
+    this.terminal.writeln('[init] 初始化命令处理器............');
+    let commandProcessor = new CommandProcessor(this);
+    commandProcessor.run();
+  }
 }
 
 // 当DOM加载完成后初始化
 document.addEventListener('DOMContentLoaded', () => {
-  // 创建应用实例
+  // 创建OS实例
   window.os = new JsOS('terminal-container');
-});
 
-// 导出JsOS类
-export { JsOS };
+  window.os.boot();
+});
