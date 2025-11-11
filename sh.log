@@ -1,15 +1,1 @@
-[2025-11-07T03:14:08] [node] start sh.js ...
-[2025-11-07T03:14:08] [debug] sh args: []
-[2025-11-07T03:14:08] [debug] new Shell with ctx:  []
-[2025-11-07T03:37:59] [node] start sh.js ...
-[2025-11-07T03:37:59] [debug] sh args: []
-[2025-11-07T03:37:59] [debug] new Shell with ctx:  []
-[2025-11-07T03:44:27] [node] start sh.js ...
-[2025-11-07T03:44:27] [debug] sh args: []
-[2025-11-07T03:44:27] [debug] new Shell with ctx:  []
-[2025-11-07T09:35:40] [node] start sh.js ...
-[2025-11-07T09:35:40] [debug] sh args: []
-[2025-11-07T09:35:40] [debug] new Shell with ctx:  []
-[2025-11-07T09:55:58] [node] start sh.js ...
-[2025-11-07T09:55:58] [debug] sh args: []
-[2025-11-07T09:55:58] [debug] new Shell with ctx:  []
+[2025-11-11T06:56:07] [info] new Shell with ctx:  []

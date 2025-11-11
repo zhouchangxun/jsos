@@ -54,10 +54,8 @@ if (isNode) {
 
 class Shell {
     constructor(ctx={}) {
-        console.log('[debug] new Shell with ctx: ', ctx);
+        console.log('[info] new Shell with ctx: ', ctx);
         // 设置相关属性
-        this.stdout = ctx.stdout;
-        this.stdin = ctx.stdin;
         // this.stdout.writeln('hello');
         // let input = this.stdin.readline();
         if(typeof window !== 'undefined'){
@@ -90,6 +88,8 @@ class Shell {
                 }
             };
         }
+        this.stdout = ctx.stdout || this.stdout;
+        this.stdin = ctx.stdin || this.stdin;
         this.state = {
             cwd: ctx.env?.PWD || '/',
             env: ctx.env || { PWD: '/', USER: 'user', HOME: '/home/user', PATH: '/bin:/usr/bin' },
@@ -107,7 +107,7 @@ class Shell {
         // note: => 函数的this指向=>函数定义时的对象,即Shell实例
         //       而function(){}函数的this指向function函数调用时的对象,即进程实例
         const commands = {
-            sh: async (ctx) => await sh(ctx),
+            sh: async (ctx={}) => await sh(ctx),
             help: async () => {
                 return this._help();
             },
@@ -229,6 +229,20 @@ class Shell {
                 console.log(`[debug] test result: ${result}`);
                 return result ? 0 : 1;
             },
+            sleep: async (ctx) => {
+                let args = ctx.args;
+                let stdout = ctx.stdout || this.stdout;
+                if(args.length === 0){
+                    stdout.writeln('Usage: sleep {SECONDS}');
+                    return 1;
+                }
+                let sleepTime = parseInt(args[0]);
+                if(isNaN(sleepTime)){
+                    stdout.writeln('error: sleep 参数必须是一个数字');
+                    return 2;
+                }
+                await new Promise(resolve => setTimeout(resolve, sleepTime * 1000));
+            },
             echo: (ctx) => {
                 console.log('[debug] echo args:', ctx.args);
                 if(ctx.stdout)
@@ -290,26 +304,28 @@ class Shell {
                     return `ls: 错误: ${e.message}`;
                 }
             },
-            cat: async (proc) => {
-                if (!proc.args[0]) return 'cat: 缺少文件名';
-                const fileName = proc.args[0];
+            cat: async (ctx) => {
+                let args = ctx.args;
+                let stdout = ctx.stdout || this.stdout;
+                if (!args[0]) return 'cat: 缺少文件名';
+                const fileName = args[0];
                 try {
                     // 优先使用os.fs
                     if(typeof os !== 'undefined' && os.fs && os.fs.read) {
-                        return proc.stdout.writeln(os.fs.read(fileName));
+                        return stdout.writeln(os.fs.read(fileName));
                     }
                     // Node.js环境使用fs模块
                     else if (isNode && fs) {
                         try {
-                            return proc.stdout.writeln(fs.readFileSync(fileName, 'utf8'));
+                            return stdout.writeln(fs.readFileSync(fileName, 'utf8'));
                         } catch (e) {
-                            return proc.stdout.writeln(`cat: 无法读取文件 ${fileName}: ${e.message}`);
+                            return stdout.writeln(`cat: 无法读取文件 ${fileName}: ${e.message}`);
                         }
                     }
                 } catch (e) {
-                    return proc.stdout.writeln(`cat: 错误: ${e.message}`);
+                    return stdout.writeln(`cat: 错误: ${e.message}`);
                 }
-                return proc.stdout.writeln(`cat: 无法读取文件 ${fileName}`);
+                return stdout.writeln(`cat: 无法读取文件 ${fileName}`);
             },
             grep: async (ctx) => {
                 if (ctx.args.length < 1) {
@@ -362,12 +378,6 @@ class Shell {
                 if (!args[0]) this.state.cwd = this.state.env.HOME;
                 else this.state.cwd = args[0].startsWith('/') ? args[0] : `${this.state.cwd}/${args[0]}`;
                 this.state.env.PWD = this.state.cwd;
-                return '';
-            },
-            export: (args) => {
-                // note: 导出后可被子进程继承
-                const [key, value] = args[0].split('=');
-                if (key && value) this.state.env[key] = value;
                 return '';
             },
             exit: () => {
@@ -1160,59 +1170,82 @@ class Shell {
             if (this.commands[ast.name]) {
                 commandFunc = this.commands[ast.name];
                 ast.cmdType = 'builtin';
-            //     cmdPath = searchCmdPath(ast.name);
-            //     commandFunc = os.loadModule(cmdPath);
-            //     ast.cmdType = 'external';
             } else {
+                //     cmdPath = searchCmdPath(ast.name);
+                //     commandFunc = os.loadModule(cmdPath);
+                //     ast.cmdType = 'external';
                 console.error(`sh: command not found: ${ast.name}`);
                 throw new Error(`sh: command not found: ${ast.name}`);
             }
 
             // 2. 命令参数解析。包括变量引用、子shell执行、参数展开等。
             try {
-                const processedArgs = ast.args.map(arg => {
-                    // 首先检查是否是包含变量引用的字符串
-                    if (typeof arg === 'string' && arg.includes('$') && !arg.startsWith('$')) {
-                        // 处理字符串中的变量引用，如"a is $a"
-                        return arg.replace(/\$(\w+)/g, (match, varName) => {
-                            return this.state.variables[varName] || match;
-                        });
-                    } else if (arg.startsWith('$')) {
-                        // 只处理以$开头的变量引用
-                        if (arg.startsWith('$((') && arg.endsWith('))')) {
-                            // 处理如：b=$((a + 1))
-                            try {
-                                const expr = arg.slice(3, -2).trim();
-                                // 改进正则表达式，确保能正确匹配变量名，即使周围有空格
-                                let exprWithValues = expr.replace(/[a-zA-Z_]\w*/g, (match) => {
-                                    return this.state.variables[match] || 0;
-                                });
-                                const result = eval(exprWithValues);
-                                return String(result);
-                            } catch (e) {
-                                return '';
-                            }
-                        }else if (arg.startsWith('$(') && arg.endsWith(')')) {
-                            // 处理如：b=$(echo $a)
-                            // todo: 实现子shell执行
-                            return arg;
-                        }
-                        // 处理$变量引用
-                        const varName = arg.substring(1);
-                        return this.state.variables[varName] || this.state.variables[arg] || arg;
+                // 执行单个命令并返回输出
+                const executeCommandSubstitution = async (cmd) => {
+                    console.log(`[debug] executeCommandSubstitution: ${cmd}`);
+                    const tempShell = new Shell();
+                    tempShell.state = { ...this.state };
+                    let output = '';
+                    tempShell.stdout = {
+                        writeln: (text) => { output += text+'\n'; },
+                        write: (text) => { output += text; }
+                    };
+                    await tempShell.executeCommand(cmd);
+                    return output.trim();
+                };
+                
+                // 使用更简单直接的方法处理命令替换
+                const processCommandSubstitution = async (str) => {
+                    // 简单的方法：先处理最内层的命令替换
+                    let result = str;
+                    
+                    // 正则表达式匹配简单的命令替换（非嵌套）
+                    let match = result.match(/\$\(([^()]*)\)/);
+                    while (match) {
+                        const cmd = match[1];
+                        const output = await executeCommandSubstitution(cmd);
+                        // 处理命令替换中的换行符
+                        result = result.replace(match[0], output.replace(/\n/g, '\\n'));
+                        // 替换后再次匹配$(cmd)
+                        match = result.match(/\$\(([^()]*)\)/);
                     }
-                    // 对于普通字符串参数，直接返回，不进行变量替换
+                    
+                    return result;
+                };
+                
+                // 处理单个参数
+                const processArg = async (arg) => {
+                    if (typeof arg !== 'string') return arg;
+                    
+                    // 处理双引号字符串中的变量引用和命令替换
+                    if (arg.includes('$')) {
+                        // 先处理变量引用
+                        let result = arg.replace(/\$(\w+)/g, (match, varName) => {
+                            // match: $varName, varName: varName
+                            return this.state.variables[match] || this.state.variables[varName] || '';
+                        });
+                        console.log(`[processArg] var replace: ${arg} -> ${result}`);
+                        // 再处理命令替换
+                        let result2 = await processCommandSubstitution(result);
+                        console.log(`[processArg] cmd replace: ${result} -> ${result2}`);
+                        return result2;
+                    }
+                    
                     return arg;
-                });
-                console.log(`[exec] loadCommand ${ast.name} args:`, processedArgs);
+                };
+                
+                // 处理所有参数
+                console.log(`[exec] loadCommand ${ast.name}, before args:`, ast.args);
+                const processedArgs = await Promise.all(ast.args.map(processArg));
+                console.log(`[exec] loadCommand ${ast.name}, after args:`, processedArgs);
 
                 // 3. 执行命令函数。如果是builtin，直接调用；如果是external，通过Process执行。
                 const Fn = this.commands[ast.name];
-                if(isNode){
+                if(ast.cmdType === 'builtin' || isNode){
                     // node环境不支持管道，也不依赖其他文件，可以基于sh.js单文件运行，方便测试sh语法。
                     return {
                         run: async () => {
-                            return await Fn({args: processedArgs});
+                            return await Fn({args: processedArgs});  // 默认使用当前shell的stdio
                         } 
                     };
                 }
@@ -1449,9 +1482,10 @@ class Shell {
     }
     prompt(content = ''){
         const path = this.state.cwd;
-        let promptContent = '\x1b[36m' + `[shell@localhost] ${path} $ ` + '\x1b[0m';
+        let rawContent = `[shell@localhost] ${path} $ `;
+        let promptContent = '\x1b[36m' + rawContent + '\x1b[0m';
         if(isBrowser){
-            this.stdout.setPrompt(promptContent);
+            this.stdout.setPrompt(promptContent, rawContent.length);
             this.stdout.write(promptContent + content);
         }else{
             rl.prompt();
@@ -1488,12 +1522,12 @@ async function sh(ctx={}) {
     if (isNode && !Array.isArray(args)) {
         args = process.argv.slice(2); // Node.js环境下获取命令行参数
     }
-    console.log('[debug] sh args:', args);
+
     const shell = new Shell(ctx);
     if(isNode){
         if(args.includes('-d')){
             // node环境默认关闭调试模式
-            shell.stdout.writeln('[debug] sh: debug mode.');
+            shell.stdout.writeln('sh: debug mode.');
             //删除args中的-d
             args = args.filter(arg => arg !== '-d');
             ctx.args = args;
@@ -1555,7 +1589,7 @@ if (typeof module !== 'undefined' && module.exports) {
     // 如果直接通过node执行此脚本
     if (require.main === module) {
         (async () => {
-            console.log('[node] start sh.js ...');
+            originConsole.log('[node] start sh.js ...');
             let ret = await sh(process.argv.slice(2));
             originConsole.log(`sh: exited with ${ret? 'error' : 'success'}`);
             process.exit(0);

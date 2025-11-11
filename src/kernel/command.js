@@ -111,7 +111,7 @@ class CommandProcessor {
     const prompt = `${path} $ `;
     // 使用ANSI颜色代码 - xterm.js支持这些代码
     let PS1 = `\x1B[36m${prompt}\x1B[0m`;
-    this.terminal.setPrompt(PS1);
+    this.terminal.setPrompt(PS1, prompt.length);
     this.terminal.prompt(content);
   }
   

@@ -120,6 +120,12 @@ class OSTerminal {
       case '\x1b[B': // 下箭头
         this._handleArrowDown();
         break;
+      case '\x1b[C': // 右箭头
+        this._handleArrowRight();
+        break;
+      case '\x1b[D': // 左箭头
+        this._handleArrowLeft();
+        break;
       case '\t': // Tab
         this._handleTab();
         break;
@@ -143,7 +149,12 @@ class OSTerminal {
         break;
     }
   }
-  
+  cursorPosition() {
+    return {
+      row: this.xterm.buffer.active.cursorY,
+      col: this.xterm.buffer.active.cursorX
+    }
+  }
   // 处理回车键
   async _handleEnter() {
     const commandText = this.currentLine.trim();
@@ -170,7 +181,24 @@ class OSTerminal {
     // 显示提示符，改为由REPL程序自己决定何时输出
     // this.prompt();
   }
-  
+  // 处理向右箭头
+  _handleArrowRight() {
+    let maxCol = this.promptLength + this.currentLine.length;
+    if (this.cursorPosition().col < maxCol) {
+      this.xterm.write('\x1b[C');
+    }else{
+      console.log('bell: cursor at end of line');
+    }
+  }
+  // 处理向左箭头
+  _handleArrowLeft() {
+    if (this.cursorPosition().col === this.promptLength) {
+      console.log('bell: cursor at prompt');
+      return;
+    }
+    // default
+    this.xterm.write('\x1b[D');
+  }
   // 处理向上箭头
   _handleArrowUp() {
     if (this.commandHistory.length === 0) return;

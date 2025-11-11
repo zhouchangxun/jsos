@@ -80,6 +80,32 @@
       
       <!-- 终端区域 -->
       <div id="terminal-container" class="flex-grow relative"></div>
+      
+      <!-- 终端快捷按钮栏 -->
+      <div class="bg-gray-800 p-2 border-t border-gray-700">
+        <div class="flex justify-center space-x-3">
+          <button id="btn-tab" class="bg-gray-700 hover:bg-gray-600 text-gray-200 px-4 py-2 rounded-md transition-colors flex items-center">
+            <i class="fa fa-keyboard-o mr-1"></i>
+            <span>Tab</span>
+          </button>
+          <button id="btn-left" class="bg-gray-700 hover:bg-gray-600 text-gray-200 px-4 py-2 rounded-md transition-colors flex items-center">
+            <i class="fa fa-arrow-left mr-1"></i>
+            <span>左</span>
+          </button>
+          <button id="btn-right" class="bg-gray-700 hover:bg-gray-600 text-gray-200 px-4 py-2 rounded-md transition-colors flex items-center">
+            <i class="fa fa-arrow-right mr-1"></i>
+            <span>右</span>
+          </button>
+          <button id="btn-up" class="bg-gray-700 hover:bg-gray-600 text-gray-200 px-4 py-2 rounded-md transition-colors flex items-center">
+            <i class="fa fa-arrow-up mr-1"></i>
+            <span>上</span>
+          </button>
+          <button id="btn-down" class="bg-gray-700 hover:bg-gray-600 text-gray-200 px-4 py-2 rounded-md transition-colors flex items-center">
+            <i class="fa fa-arrow-down mr-1"></i>
+            <span>下</span>
+          </button>
+        </div>
+      </div>
     </div>
     
     <!-- 帮助信息 -->
@@ -107,11 +133,6 @@
   </footer>
 
   <!-- 引入模块化JS文件 -->
-  <!-- <script type="module" src="./src/kernel/fs.js"></script>
-  <script type="module" src="./src/kernel/process.js"></script>
-  <script type="module" src="./src/kernel/terminal.js"></script>
-  <script type="module" src="./src/kernel/command.js"></script>
-  <script type="module" src="./src/utils/autocomplete.js"></script> -->
   <script src="./src/bin/sh.js"></script>
   <script type="module" src="./src/boot.js"></script>
   
@@ -120,6 +141,37 @@
     function setStatus(status) {
       document.getElementById('status').textContent = status;
     }
+    
+    // 为终端快捷按钮添加事件监听器
+    document.addEventListener('DOMContentLoaded', function() {
+      // 等待终端初始化完成
+      setTimeout(function() {
+        const terminal = window.os?.terminal;
+        
+        if (terminal && terminal._handleData) {
+          // Tab按钮
+          document.getElementById('btn-tab')?.addEventListener('click', function() {
+            terminal._handleData('\t');
+          });
+          // 左箭头按钮
+          document.getElementById('btn-left')?.addEventListener('click', function() {
+            terminal._handleData('\x1b[D');
+          });
+          // 右箭头按钮
+          document.getElementById('btn-right')?.addEventListener('click', function() {
+            terminal._handleData('\x1b[C');
+          });
+          // 上箭头按钮
+          document.getElementById('btn-up')?.addEventListener('click', function() {
+            terminal._handleData('\x1b[A');
+          });
+          // 下箭头按钮
+          document.getElementById('btn-down')?.addEventListener('click', function() {
+            terminal._handleData('\x1b[B');
+          });
+        }
+      }, 1000);
+    });
     
     // 在main.js中会初始化整个应用
   </script>
